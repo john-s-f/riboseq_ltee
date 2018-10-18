@@ -1,0 +1,87 @@
+---
+title: "Phase 1: Kallisto"
+output: html_notebook
+author: "John Favate"
+date: "`r format(Sys.time())`"
+---
+
+This is the first in a set of four documents that details the code used to generate and analyze the data presented in this paper. The workflow can be divided into four phases; quantification with kallisto, repairing the kallisto output, sleuth, data analysis. This documents details the first step - quantifying transcript abundances with kallisto.
+```{bash}
+kallisto cite
+```
+
+The first step in using kallisto is to generate kallisto indices from the transcriptome files. There are 14 transcriptome files in total, 2 ancestral lines and 12 evolved lines. Because we used ERCC spike in controls, the 92 ERCC sequences have been appended to those files with the prefix ERC_ whereas the bacterial sequences are ECB_ . The files necessary for this are in "/john/genomic_files/transcriptomes". The file in "/john/genomic_files/ercc" is the ercc sequences.
+
+## Generating kallisto indices
+Kallisto indices can be generated with a single bash for loop. This loop generates the variable NAME, which will become the file name for the index and is based off the input file. Indices have the arbitrary file extension of ".kidx", for kallisto index. It also shows "k19", for the -k 19 flag in the index commmand, denoting a kmer size of 19. We use this kmew size because of the short read length. It then calls the kallisto index command, specifying the output location and file name in the process. This results in 14 kallisto indices. This should be a quick process, taking only a few minutes on our machines.
+```{bash}
+for FILE in /data/riboseq/Lenski/john/genomic_files/transcriptomes/*.fasta; do
+  NAME=`echo $FILE | cut -d '/' -f 8 | cut -d '.' -f 1 | cut -d '_' -f 2`_k19.kidx
+  
+  kallisto index -i /data/riboseq/Lenski/john/kallisto/indices/$NAME $FILE -k 19
+done
+```
+
+## Kallisto quantification 
+
+The next step is to run the quantification. In total, there are 12 evolved lines and 2 ancestral lines. Each of these has both RNAseq and footprinting data, and each of those has a biological replicate, resulting in 56 total samples. Some of the samples are paired end reads and some are single end reads, the kallisto commands for these will be slightly different.
+
+#### Create output directories
+
+Kallisto needs somewhere to write to, so we will make the 56 output directories using two bash for loops. Two are needed because of differences in the naming of the ancestral and evolved samples.
+
+This loop says, make directories for replicate(1 or 2)_(RNAseq or footprinting)_(Ara+ or Ara-)_(line 1:6)
+```{bash}
+for x in {1,2}; do
+  for RorF in {r,f}; do
+    for NorP in {n,p}; do
+      for y in `seq 1 6`; do
+        mkdir -p /data/riboseq/Lenski/john/kallisto/output/originals/rep$x\_$RorF\A$NorP$y/
+      done
+    done
+  done
+done
+```
+
+Ancestral directories are made with this loop, following the same principle.
+```{bash}
+ for x in {1,2}; do
+  for RorF in {r,f}; do
+    for y in {6,7}; do
+      mkdir -p /data/riboseq/Lenski/john/kallisto/output/originals/rep$x\_$RorF\R0$y
+    done
+  done
+done
+```
+
+You can see the names of all the directories, and the fact that there are 56 of them 
+```{bash}
+ls /data/riboseq/Lenski/john/kallisto/output/originals/
+```
+```{bash}
+ls /data/riboseq/Lenski/john/kallisto/output/originals/ | wc -l
+```
+The logic behind the sample naming is as follows - *rep* denotes the biological replicate 1 or 2, *r or f* denote RNAseq and footprinting (which I sometimes refer to as riboseq because it fits in the figures better), *An or Ap* mean Ara+ and Ara-, the *1:6* after those denotes the line. 
+
+#### Running the quantification
+
+With the directories in place, we can execute the quantification commands. Due to differences in being paired or single end reads, or differences in sample naming, four bash for loops are required. They will all occur in one code chunk because they need some environmental variables.
+```{bash}
+##Set parameters for number of bootstraps, mean read length and standard deviation, number of threads to use. 
+BOOTSTRAPS=1
+L=25
+S=40
+THREADS=50
+
+for NorP in {n,p}; do
+  for b in `seq 1 6`; do
+    kallisto quant -i /data/riboseq/Lenski/john/kallisto/indices/rel$NorP$b\_k19.kidx -o  /data/riboseq/Lenski/john/kallisto/output/originals/rep1_fA$NorP$b/ -b $BOOTSTRAPS -t $THREADS /data/riboseq/Lenski/john/kallisto/input/replicate1/fA$NorP$b\_norRNA.1.fq.gz /data/riboseq/Lenski/john/kallisto/input/replicate1/fA$NorP$b\_norRNA.2.fq.gz
+  done
+done
+```
+
+
+
+
+
+
